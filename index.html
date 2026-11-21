@@ -35,6 +35,7 @@ button:disabled{opacity:.5}
 .row{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .empty{text-align:center;color:var(--mute);padding:30px 10px}
 .note{color:var(--mute);font-size:.85rem}
+.note a{color:var(--mute)}
 .prev{display:flex;gap:6px;flex-wrap:wrap}.prev img{width:56px;height:56px;object-fit:cover;border-radius:8px}
 #lb{position:fixed;inset:0;background:rgba(0,0,0,.88);display:none;align-items:center;justify-content:center;z-index:50;padding:16px;cursor:zoom-out}
 #lb img{max-width:100%;max-height:100%;border-radius:8px}
@@ -46,15 +47,26 @@ button:disabled{opacity:.5}
 <nav id="nav"><a href="#next">Nächstes Essen</a><a href="#past">Schon gekocht</a><a href="#ideas">Vorschläge</a></nav>
 <div id="view"></div>
 <p class="note" id="status" style="text-align:center"></p>
+<p class="note" id="foot" style="text-align:center"></p>
 </main>
 <div id="lb"><img alt=""></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
+/* ====== HIER EINTRAGEN (Supabase → Project Settings → API) ====== */
+const SUPABASE_URL='https://ecpuiztrswlywgesihou.supabase.co/rest/v1/';
+const SUPABASE_ANON_KEY='sb_publishable_HFAsiF-XCen420fysA_AjA_O7lv7543';
+/* ================================================================ */
+
 const $=s=>document.querySelector(s);
-const S={dinners:[],ideas:[],db:null,assets:null,user:null,edit:false,me:null,loaded:false};
+const S={dinners:[],ideas:[],edit:false,loaded:false};
+const configured=!SUPABASE_URL.includes('DEIN-PROJEKT');
+const sb=configured?supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY):null;
+
 const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
 const fmt=s=>{try{return new Date(s+'T12:00:00').toLocaleDateString('de-DE',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}catch(e){return s}};
 function h(tag,attrs,...kids){const e=document.createElement(tag);for(const k in attrs||{}){if(k==='on')for(const ev in attrs.on)e.addEventListener(ev,attrs.on[ev]);else if(k==='text')e.textContent=attrs[k];else e.setAttribute(k,attrs[k])}kids.flat().forEach(x=>x!=null&&e.append(x));return e}
-function imgs(list){if(!list||!list.length)return null;return h('div',{class:'imgs'},list.map(id=>h('img',{src:'/_blob/'+id,loading:'lazy',alt:'Gericht',on:{click:()=>{$('#lb img').src='/_blob/'+id;$('#lb').style.display='flex'}}})))}
+function imgs(list){if(!list||!list.length)return null;return h('div',{class:'imgs'},list.map(url=>h('img',{src:url,loading:'lazy',alt:'Gericht',on:{click:()=>{$('#lb img').src=url;$('#lb').style.display='flex'}}})))}
 $('#lb').onclick=()=>$('#lb').style.display='none';
 
 async function shrink(file){
@@ -63,11 +75,23 @@ async function shrink(file){
   c.getContext('2d').drawImage(bmp,0,0,c.width,c.height);
   return await new Promise(res=>c.toBlob(b=>res(b||file),'image/jpeg',.85))}catch(e){return file}
 }
-async function upload(files,btn){
-  const ids=[];let i=0;
+async function upload(files,btn,folder){
+  const urls=[];let i=0;
   for(const f of files){btn.textContent='Lade Bild '+(++i)+'/'+files.length+' …';
-    const r=await S.assets.upload(await shrink(f));ids.push(r.id)}
-  return ids;
+    const blob=await shrink(f);
+    const path=folder+'/'+Date.now()+'-'+Math.random().toString(36).slice(2,8)+'.jpg';
+    const {error}=await sb.storage.from('images').upload(path,blob,{contentType:'image/jpeg'});
+    if(error)throw error;
+    urls.push(sb.storage.from('images').getPublicUrl(path).data.publicUrl);
+  }
+  return urls;
+}
+async function load(){
+  const [d,i]=await Promise.all([
+    sb.from('dinners').select('*').order('date'),
+    sb.from('ideas').select('*').order('created_at',{ascending:false})]);
+  if(d.error||i.error){$('#status').textContent='Fehler beim Laden: '+(d.error||i.error).message;return}
+  S.dinners=d.data;S.ideas=i.data;S.loaded=true;$('#status').textContent='';render();
 }
 function formFor(kind){
   const isD=kind==='dinners';
@@ -76,45 +100,65 @@ function formFor(kind){
   f.date=isD?h('input',{type:'date',required:'',value:''}):null;
   f.author=isD?null:h('input',{placeholder:'Dein Name',required:'',maxlength:'40'});
   f.title=h('input',{placeholder:isD?'Titel des Menüs':'Dein Gerichte-Vorschlag',required:'',maxlength:'100'});
-  f.text=h('textarea',{placeholder:isD?'Menü, Gänge, Besonderheiten …':'Beschreibung, Idee, Link zum Rezept …'});
+  f.text=h('textarea',{placeholder:isD?'Menü, Gänge, Besonderheiten …':'Beschreibung, Idee, Link zum Rezept …',maxlength:'4000'});
   f.files=h('input',{type:'file',accept:'image/*',multiple:''});
   f.files.addEventListener('change',()=>{prev.replaceChildren();[...f.files.files].forEach(x=>prev.append(h('img',{src:URL.createObjectURL(x),alt:''})))});
   const btn=h('button',{type:'submit'},isD?'Eintrag speichern':'Vorschlag senden');
   const form=h('form',{on:{submit:async e=>{e.preventDefault();btn.disabled=true;const label=btn.textContent;
     try{
-      let ids=[];const files=[...f.files.files];
-      if(files.length){if(!S.assets)throw new Error('Bild-Upload ist für dich gerade nicht freigeschaltet.');ids=await upload(files,btn)}
-      const data=isD?{title:f.title.value.trim(),date:f.date.value,text:f.text.value.trim(),imgs:ids,at:Date.now()}
-        :{title:f.title.value.trim(),author:f.author.value.trim(),text:f.text.value.trim(),imgs:ids,uid:S.me,at:Date.now()};
-      await S.db.collection(kind).add(data);form.reset();prev.replaceChildren();
+      const files=[...f.files.files];
+      const urls=files.length?await upload(files,btn,isD?'dinners':'ideas'):[];
+      const row=isD?{title:f.title.value.trim(),date:f.date.value,text:f.text.value.trim(),imgs:urls}
+        :{title:f.title.value.trim(),author:f.author.value.trim(),text:f.text.value.trim(),imgs:urls};
+      const {error}=await sb.from(kind).insert(row);
+      if(error)throw error;
+      form.reset();prev.replaceChildren();await load();
     }catch(err){alert('Das hat nicht geklappt: '+(err&&err.message||err))}
     btn.disabled=false;btn.textContent=label}}},
     f.date,f.author,f.title,f.text,h('label',{class:'note'},'Bilder (mehrere möglich – alle Komponenten des Menüs)'),f.files,prev,btn);
   return form;
 }
+async function del(table,id,q){
+  if(!confirm(q))return;
+  const {error}=await sb.from(table).delete().eq('id',id);
+  if(error)alert('Löschen fehlgeschlagen: '+error.message);else load();
+}
 function dinnerCard(d,hero){
-  const c=h('div',{class:'card'+(hero?' hero':'')},
+  return h('div',{class:'card'+(hero?' hero':'')},
     h('div',{class:'row'},h('div',{class:'date',text:fmt(d.date)}),
-      S.edit?h('button',{class:'ghost',on:{click:()=>{if(confirm('Eintrag löschen?'))S.db.collection('dinners').doc(d.id).delete()}}},'Löschen'):null),
+      S.edit?h('button',{class:'ghost',on:{click:()=>del('dinners',d.id,'Eintrag löschen?')}},'Löschen'):null),
     h('h2',{text:d.title}),d.text?h('p',{text:d.text}):null,imgs(d.imgs));
-  return c;
+}
+function loginView(){
+  const msg=h('p',{class:'note'});
+  const email=h('input',{type:'email',placeholder:'E-Mail',required:'',autocomplete:'username'});
+  const pw=h('input',{type:'password',placeholder:'Passwort',required:'',autocomplete:'current-password'});
+  const form=h('form',{on:{submit:async e=>{e.preventDefault();
+    const {error}=await sb.auth.signInWithPassword({email:email.value,password:pw.value});
+    if(error)msg.textContent='Login fehlgeschlagen: '+error.message;else location.hash='#next'}}},
+    email,pw,h('button',{type:'submit'},'Anmelden'),msg);
+  return h('div',{class:'card'},h('h3',{text:'Host-Login'}),h('div',{style:'height:10px'}),form);
 }
 function render(){
   const v=$('#view');v.replaceChildren();
   const page=(location.hash||'#next').slice(1);
   document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.getAttribute('href')==='#'+page));
+  const foot=$('#foot');foot.replaceChildren();
+  if(sb){foot.append(S.edit?h('a',{href:'#',on:{click:e=>{e.preventDefault();sb.auth.signOut()}}},'Host abmelden'):h('a',{href:'#login'},'Host-Login'))}
+  if(!configured){v.append(h('div',{class:'empty'},'Bitte zuerst SUPABASE_URL und SUPABASE_ANON_KEY im Code eintragen.'));return}
+  if(page==='login'){v.append(loginView());return}
+  if(!S.loaded){v.append(h('div',{class:'empty'},'Daten werden geladen …'));return}
   const t=today();
   const up=S.dinners.filter(d=>d.date>=t).sort((a,b)=>a.date<b.date?-1:1);
   const past=S.dinners.filter(d=>d.date<t).sort((a,b)=>a.date<b.date?1:-1);
-  if(!S.db){v.append(h('div',{class:'empty'},'Daten werden geladen … Falls das nicht klappt, öffne die Seite bitte über den Einladungslink.'));return}
   if(page==='past'){
     if(!past.length)v.append(h('div',{class:'empty'},'Noch keine vergangenen Essen. Das erste kommt bald!'));
     past.forEach(d=>v.append(dinnerCard(d)));
   }else if(page==='ideas'){
     v.append(h('div',{class:'card'},h('h3',{text:'Dein Vorschlag für The Host'}),h('p',{class:'note',text:'Was soll ich als Nächstes kochen? Schick mir Ideen mit Foto und Text.'}),formFor('ideas')));
-    S.ideas.slice().sort((a,b)=>b.at-a.at).forEach(s=>v.append(h('div',{class:'card'},
+    S.ideas.forEach(s=>v.append(h('div',{class:'card'},
       h('div',{class:'row'},h('div',{class:'date',text:'Von '+s.author}),
-        (S.edit||s.uid===S.me)?h('button',{class:'ghost',on:{click:()=>{if(confirm('Vorschlag löschen?'))S.db.collection('ideas').doc(s.id).delete()}}},'Löschen'):null),
+        S.edit?h('button',{class:'ghost',on:{click:()=>del('ideas',s.id,'Vorschlag löschen?')}},'Löschen'):null),
       h('h2',{text:s.title}),s.text?h('p',{text:s.text}):null,imgs(s.imgs))));
     if(!S.ideas.length)v.append(h('div',{class:'empty'},'Noch keine Vorschläge – sei der Erste!'));
   }else{
@@ -125,17 +169,13 @@ function render(){
   }
 }
 window.addEventListener('hashchange',render);
-(async()=>{
-  render();
-  try{
-    const [db,assets,user]=await Promise.all([claude.use('db'),claude.use('assets'),claude.use('user')]);
-    S.db=db;S.assets=assets;S.user=user;
-    if(user){try{S.edit=await user.isOwner()||await user.canEdit()}catch(e){}try{S.me=await user.id()}catch(e){}}
-    if(!db){render();return}
-    const sub=(name,key)=>db.collection(name).onSnapshot(s=>{S[key]=s.docs.map(x=>({id:x.id,...x.data()}));render()},e=>{$('#status').textContent='Fehler beim Laden: '+e.message});
-    sub('dinners','dinners');sub('ideas','ideas');
-  }catch(e){$('#status').textContent='Fehler beim Start: '+e.message}
-})();
+render();
+if(sb){
+  sb.auth.getSession().then(({data})=>{S.edit=!!data.session;render()});
+  sb.auth.onAuthStateChange((_e,session)=>{S.edit=!!session;render()});
+  load();
+  sb.channel('live').on('postgres_changes',{event:'*',schema:'public'},load).subscribe();
+}
 </script>
 </body>
 </html>
