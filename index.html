@@ -15,6 +15,9 @@ main{max-width:720px;margin:0 auto;padding:20px 16px 60px}
 h1,h2,h3{font-family:Georgia,"Times New Roman",serif;margin:0}
 header{text-align:center;padding:24px 0 8px}
 h1{font-size:2.6rem;letter-spacing:.02em}
+.logo-frame{width:128px;height:128px;border:3px solid var(--acc);border-radius:50%;padding:4px;margin:0 auto}
+.logo-crop{display:block;width:100%;height:100%;overflow:hidden;border-radius:50%}
+.logo{display:block;width:100%;height:100%;object-fit:cover;transform:scale(1.28)}
 .sub{color:var(--mute);margin:4px 0 0}
 nav{display:flex;gap:8px;justify-content:center;margin:20px 0;flex-wrap:wrap}
 nav a{padding:8px 16px;border-radius:99px;background:var(--chip);color:var(--ink);text-decoration:none;font-weight:600;font-size:.95rem}
@@ -43,7 +46,7 @@ button:disabled{opacity:.5}
 </head>
 <body>
 <main>
-<header><h1>The Host</h1><p class="sub">Immer am zweiten Freitag des Monats: ein besonderes Essen 🍽️</p></header>
+<header><h1 class="logo-frame"><span class="logo-crop"><img class="logo" src="The%20Host%20Logo.jpeg" alt="The Host"></span></h1><p class="sub">Immer am zweiten Freitag des Monats: ein besonderes Essen 🍽️</p></header>
 <nav id="nav"><a href="#next">Nächstes Essen</a><a href="#past">Schon gekocht</a><a href="#ideas">Vorschläge</a></nav>
 <div id="view"></div>
 <p class="note" id="status" style="text-align:center"></p>
