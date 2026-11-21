@@ -43,7 +43,7 @@ button:disabled{opacity:.5}
 </head>
 <body>
 <main>
-<header><h1>The Host</h1><p class="sub">Alle zwei Wochen am Freitag: ein besonderes Essen 🍽️</p></header>
+<header><h1>The Host</h1><p class="sub">Immer am zweiten Freitag des Monats: ein besonderes Essen 🍽️</p></header>
 <nav id="nav"><a href="#next">Nächstes Essen</a><a href="#past">Schon gekocht</a><a href="#ideas">Vorschläge</a></nav>
 <div id="view"></div>
 <p class="note" id="status" style="text-align:center"></p>
@@ -54,7 +54,7 @@ button:disabled{opacity:.5}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 /* ====== HIER EINTRAGEN (Supabase → Project Settings → API) ====== */
-const SUPABASE_URL='https://ecpuiztrswlywgesihou.supabase.co/rest/v1/';
+const SUPABASE_URL='https://ecpuiztrswlywgesihou.supabase.co';
 const SUPABASE_ANON_KEY='sb_publishable_HFAsiF-XCen420fysA_AjA_O7lv7543';
 /* ================================================================ */
 
@@ -115,7 +115,7 @@ function formFor(kind){
       form.reset();prev.replaceChildren();await load();
     }catch(err){alert('Das hat nicht geklappt: '+(err&&err.message||err))}
     btn.disabled=false;btn.textContent=label}}},
-    f.date,f.author,f.title,f.text,h('label',{class:'note'},'Bilder (mehrere möglich – alle Komponenten des Menüs)'),f.files,prev,btn);
+    f.date,f.author,f.title,f.text,h('label',{class:'note'},'Bilder (Multiupload möglich)'),f.files,prev,btn);
   return form;
 }
 async function del(table,id,q){
